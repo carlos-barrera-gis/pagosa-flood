@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pagosa Springs Flood Situation</title>
+<meta name="description" content="Situation map and full river record for the October–November 2026 San Juan River floods in Pagosa Springs, Colorado. Live USGS gauge data and NWS alerts.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+html,body{margin:0;padding:0}
+/* Layout: incident map sheet — aerial map canvas left, ICS-style situation panel right (stacks under map on phones). Single deliberate "map sheet" look in both host themes. */
+:root{
+  color-scheme: light;
+  --paper:#f3f1ea; --ink:#1d2326; --muted:#5b6461; --rule:#cfc9b8; --panel:#fbfaf6;
+  --water:#3d7fb0; --flood:#c8291f; --hwy:#e0a040; --ok:#2f7d4f; --warn:#c98a10; --info:#2c5d8a; --cyan:#5fd3f3;
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+*{box-sizing:border-box}
+.sheet{display:grid;grid-template-columns:minmax(0,1fr) 410px;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:600px}
+header.tb{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:stretch;border-bottom:2px solid var(--ink);background:var(--panel);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.tb .name{padding-block:10px;flex:1 1 320px;min-width:0}
+.tb .eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--flood);font-weight:600}
+.tb h1{font-family:var(--f-display);font-weight:700;font-size:clamp(22px,3.2vw,32px);line-height:1.05;margin:2px 0 0;text-wrap:balance;letter-spacing:.01em}
+.tb .meta{display:flex;flex-wrap:wrap;font-family:var(--f-mono);font-size:11px}
+.tb .meta div{padding:10px 14px;border-left:1px solid var(--rule);display:flex;flex-direction:column;justify-content:center}
+.tb .meta b{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.mapwrap{position:relative;min-height:0;border-right:1px solid var(--ink)}
+#map{position:absolute;inset:0;background:#2a2f2b}
+.views{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:900;display:flex;background:var(--panel);border:1px solid var(--ink);border-radius:3px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.views button{font:600 13px var(--f-display);letter-spacing:.06em;text-transform:uppercase;border:0;background:transparent;padding:7px 12px;color:var(--ink);cursor:pointer;white-space:nowrap}
+.views button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.views button:focus-visible,.layer input:focus-visible,.legend .toggle:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.north{position:absolute;right:calc(12px + env(safe-area-inset-right,0px));top:12px;z-index:900;width:38px;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.legend{position:absolute;left:10px;bottom:30px;z-index:900;background:rgba(251,250,246,.95);border:1px solid var(--ink);padding:8px 10px;font-size:12px;max-width:240px;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.legend h3,.panel h2{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.07em;font-size:13px;margin:0 0 6px;font-weight:700}
+.legend ul{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.legend li{display:flex;align-items:center;gap:7px}
+.legend svg{flex:0 0 22px}
+.legend .toggle{display:none}
+.credit{position:absolute;right:calc(10px + env(safe-area-inset-right,0px));bottom:4px;z-index:900;font:10px var(--f-mono);color:#fff;text-shadow:0 0 3px #000,0 0 2px #000;pointer-events:none}
+aside.panel{overflow-y:auto;background:var(--panel);min-width:0}
+.panel section{padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--rule)}
+.pill{font:600 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:2px;white-space:nowrap;flex:0 0 auto;margin-top:1px}
+.pill.red{background:var(--flood);color:#fff}.pill.amb{background:var(--warn);color:#1d1606}.pill.grn{background:var(--ok);color:#fff}.pill.blu{background:var(--info);color:#fff}
+.items{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.items li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start}
+.items .t{font-weight:600}
+.items .d{color:var(--muted);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.kpi b{display:block;font:600 10px var(--f-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.kpi span{font:600 21px var(--f-mono);font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi span.red{color:var(--flood)}.kpi span.grn{color:var(--ok)}
+.kpi small{display:block;font-size:11.5px;color:var(--muted)}
+#hydro{width:100%;height:auto;display:block}
+.note{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.layers{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.layer{display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer}
+.src{font-size:12px;color:var(--muted)}
+.src a{color:var(--info)}
+.src ol{margin:6px 0 0;padding-left:18px;display:grid;gap:3px}
+.disc{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);line-height:1.5;text-transform:uppercase;letter-spacing:.03em;margin:0}
+
+/* Leaflet essentials (inlined) */
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-layer{position:absolute;left:0;top:0}
+.leaflet-container{overflow:hidden;font-family:var(--f-body);-webkit-tap-highlight-color:transparent;touch-action:none}
+.leaflet-tile{filter:inherit;visibility:hidden;user-select:none;-webkit-user-drag:none}
+.leaflet-tile-loaded{visibility:inherit}
+.leaflet-container img.leaflet-tile{max-width:none!important;max-height:none!important;width:256px;height:256px;padding:0}
+.leaflet-tile-container{pointer-events:none}
+.leaflet-pane{z-index:400}.leaflet-tile-pane{z-index:200}.leaflet-overlay-pane{z-index:400}.leaflet-marker-pane{z-index:600}.leaflet-tooltip-pane{z-index:650}.leaflet-popup-pane{z-index:700}
+.leaflet-container .leaflet-overlay-pane svg{max-width:none!important;max-height:none!important}
+.leaflet-marker-icon{display:block}
+.leaflet-pane>svg path{pointer-events:none}
+.leaflet-pane>svg path.leaflet-interactive,.leaflet-marker-icon.leaflet-interactive{pointer-events:auto;cursor:pointer}
+.leaflet-zoom-animated{transform-origin:0 0}
+.leaflet-zoom-anim .leaflet-zoom-animated{transition:transform .25s cubic-bezier(0,0,.25,1)}
+.leaflet-zoom-anim .leaflet-zoom-hide{visibility:hidden}
+.leaflet-fade-anim .leaflet-tile{will-change:opacity}
+.leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}.leaflet-top{top:0}.leaflet-bottom{bottom:0}.leaflet-left{left:0}.leaflet-right{right:0}
+.leaflet-control{position:relative;z-index:800;pointer-events:auto;float:left;clear:both}
+.leaflet-right .leaflet-control{float:right;margin-right:10px}.leaflet-left .leaflet-control{margin-left:10px}
+.leaflet-top .leaflet-control{margin-top:10px}.leaflet-bottom .leaflet-control{margin-bottom:18px}
+.leaflet-top.leaflet-right{top:56px}
+.leaflet-bar{border:1px solid var(--ink);border-radius:3px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.leaflet-bar a{display:block;width:30px;height:30px;line-height:30px;text-align:center;background:var(--panel);color:var(--ink);text-decoration:none;font:700 18px var(--f-body);border-bottom:1px solid var(--rule)}
+.leaflet-bar a:last-child{border-bottom:0}
+.leaflet-control-scale-line{border:2px solid var(--ink);border-top:none;line-height:1.1;padding:2px 5px 1px;font:11px var(--f-mono);white-space:nowrap;background:rgba(251,250,246,.92);color:var(--ink)}
+.leaflet-control-scale-line:not(:first-child){border-top:2px solid var(--ink);border-bottom:none;margin-top:-2px}
+.leaflet-tooltip{position:absolute;pointer-events:none;white-space:nowrap}
+.leaflet-popup{position:absolute;text-align:center;margin-bottom:14px}
+.leaflet-popup-content-wrapper{text-align:left;background:var(--panel);color:var(--ink);border:1px solid var(--ink);border-radius:3px;box-shadow:0 3px 10px rgba(0,0,0,.35)}
+.leaflet-popup-content{margin:10px 26px 10px 12px;line-height:1.4;font-size:13px;max-width:260px}
+.leaflet-popup-content b{font-family:var(--f-display);font-size:15px;letter-spacing:.02em}
+.leaflet-popup-content i{color:var(--muted)}
+.leaflet-popup-tip-container{width:40px;height:16px;position:absolute;left:50%;margin-left:-20px;overflow:hidden;pointer-events:none}
+.leaflet-popup-tip{width:14px;height:14px;margin:-8px auto 0;transform:rotate(45deg);background:var(--panel);border:1px solid var(--ink)}
+.leaflet-popup-close-button{position:absolute;top:2px;right:4px;font:18px/22px var(--f-body);color:var(--muted);text-decoration:none}
+
+.lbl{background:none;border:0;font-family:var(--f-display);color:#fff;text-shadow:0 0 3px #000,0 0 3px #000,0 0 2px #000}
+.lbl.place{font-weight:700;font-size:16px;letter-spacing:.07em;text-transform:uppercase}
+.lbl.place.sm{font-size:13px;font-weight:600}
+.lbl.water{color:#bfeaff;font-style:italic;font-weight:600;font-size:14px;letter-spacing:.04em}
+.lbl.feat{font-weight:600;font-size:12.5px;color:#ffe2dd}
+.lbl.hwy{font-family:var(--f-mono);font-size:10px;font-weight:600;background:#fbfaf6;border:1.5px solid #b8752a;color:#1d2326;padding:0 3px;text-shadow:none}
+.z-town .lbl.ctyonly,.z-area .lbl.ctyonly{display:none}
+.z-county .lbl.townonly,.z-area .lbl.townonly{display:none}
+.z-county .lbl.areaonly{display:none}
+.sym{display:grid;place-items:center;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
+.sym.approx svg{opacity:.95}
+.sym.approx::after{content:"";position:absolute;inset:-4px;border:1.5px dashed #fff;border-radius:50%}
+
+@media (max-width:860px){
+  .sheet{grid-template-columns:1fr;grid-template-rows:auto 68vh auto;height:auto}
+  .mapwrap{border-right:0;border-bottom:1px solid var(--ink)}
+  .views{top:8px}
+  .views button{padding:6px 9px;font-size:12px}
+  .legend{max-width:200px;font-size:11px;padding:6px 8px}
+  .legend.collapsed ul{display:none}
+  .legend.collapsed h3{margin:0}
+  .legend .toggle{display:inline;font:600 11px var(--f-mono);border:0;background:none;color:var(--info);padding:0;margin-left:6px;cursor:pointer}
+  .tb .meta{width:100%;border-top:1px solid var(--rule)}
+  .tb .meta div:first-child{border-left:0;padding-left:0}
+}
+@media (prefers-reduced-motion:reduce){.leaflet-zoom-anim .leaflet-zoom-animated{transition:none}}
+
+/* additions for the public edition */
+@media (min-width:861px){.sheet{grid-template-columns:minmax(0,1fr) 450px}}
+.tb .meta .live{color:var(--ok)}
+.tb .meta .live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:1px;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:3px;overflow:hidden;margin:0 0 6px}
+.seg button{font:600 11px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;border:0;background:transparent;padding:4px 9px;cursor:pointer;color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.hrow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+table.g{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+table.g th{font:600 10px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--rule);padding:4px 4px 4px 0}
+table.g td{padding:5px 4px 5px 0;border-bottom:1px solid #ebe7da;vertical-align:top}
+table.g td.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+table.g .stale{color:var(--flood);font-weight:600}
+.tl{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--rule);display:grid;gap:11px}
+.tl li{position:relative}
+.tl li::before{content:"";position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--panel);border:2px solid var(--info)}
+.tl li.crest::before{background:var(--flood);border-color:var(--flood)}
+.tl li.ok::before{background:var(--ok);border-color:var(--ok)}
+.tl .when{font:600 11px var(--f-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tl .what{font-size:13.5px}
+.tl sup a,.items sup a{color:var(--info);text-decoration:none;font-size:10px}
+.dl{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.dl button{font:600 12px var(--f-display);letter-spacing:.06em;text-transform:uppercase;background:var(--ink);color:var(--paper);border:0;border-radius:3px;padding:8px 12px;cursor:pointer}
+.dl button:disabled{opacity:.45;cursor:default}
+.apilog{font:11px/1.5 var(--f-mono);color:var(--muted);margin-top:8px;max-height:120px;overflow:auto;word-break:break-all}
+.apilog b{color:var(--ok)}
+.apilog b.err{color:var(--flood)}
+.alert{border-left:3px solid var(--warn);padding:4px 0 4px 8px;margin:6px 0;font-size:13px}
+.alert b{display:block}
+.sym.gauge-live svg{filter:drop-shadow(0 0 3px #5fd3f3)}
+#hydro{cursor:crosshair}
+.hover{font:600 11px var(--f-mono);color:var(--ink);min-height:16px}
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header class="tb">
+    <div class="name">
+      <div class="eyebrow">Situation map · San Juan River floods · Oct 22 – Nov 2026 · Archuleta County, CO</div>
+      <h1>Pagosa Springs Flood Situation</h1>
+    </div>
+    <div class="meta">
+      <div><b>River data</b><span class="live" id="liveStamp">Loading USGS…</span></div>
+      <div><b>Status as of</b>Thu 05 Nov 2026 · 08:25 MST</div>
+      <div><b>Built by</b>Carlos Barrera · GIS</div>
+    </div>
+  </header>
+
+  <div class="mapwrap">
+    <div id="map" class="z-town" role="application" aria-label="Flood situation map of Pagosa Springs on aerial imagery"></div>
+    <div class="views" role="group" aria-label="Map extent">
+      <button id="v-town" aria-pressed="true">Downtown</button>
+      <button id="v-area" aria-pressed="false">Pagosa Area</button>
+      <button id="v-county" aria-pressed="false">County</button>
+    </div>
+    <svg class="north" viewBox="0 0 40 56" aria-label="North arrow"><polygon points="20,4 32,40 20,32 8,40" fill="#fbfaf6" stroke="#1d2326" stroke-width="1.2"/><polygon points="20,4 20,32 8,40" fill="#1d2326"/><text x="20" y="54" text-anchor="middle" font-family="Barlow Condensed,Arial Narrow,sans-serif" font-weight="700" font-size="15" fill="#fff" stroke="#1d2326" stroke-width="3" paint-order="stroke">N</text></svg>
+    <div class="legend" id="legend">
+      <h3>Legend<button class="toggle" id="lg-t" aria-expanded="true">hide</button></h3>
+      <ul>
+        <li><svg viewBox="0 0 22 14" width="22" height="14"><rect x="1" y="1" width="20" height="12" fill="url(#lgHatch)" stroke="#ff3b2f" stroke-width="1.8"/><defs><pattern id="lgHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="rgba(255,59,47,.25)"/><line x1="0" y1="0" x2="0" y2="5" stroke="#ff3b2f" stroke-width="1.6"/></pattern></defs></svg>Evacuation order remaining</li>
+        <li><svg viewBox="0 0 22 14" width="22" height="14"><rect x="1" y="1" width="20" height="12" fill="rgba(255,255,255,.12)" stroke="#f0b020" stroke-width="1.8" stroke-dasharray="4 2"/></svg>Evacuated Nov 1, lifted Nov 3</li>
+        <li><svg viewBox="0 0 22 14" width="22" height="14"><path d="M1 9 C7 3,14 13,21 5" stroke="#fff" stroke-width="5" fill="none"/><path d="M1 9 C7 3,14 13,21 5" stroke="#3d7fb0" stroke-width="3" fill="none"/></svg>River centerline</li>
+        <li><svg viewBox="0 0 22 14" width="22" height="14"><line x1="1" y1="7" x2="21" y2="7" stroke="#1d2326" stroke-width="5"/><line x1="1" y1="7" x2="21" y2="7" stroke="#e0a040" stroke-width="3"/></svg>U.S./State highway</li>
+        <li><svg viewBox="0 0 22 14" width="22" height="14"><line x1="1" y1="7" x2="21" y2="7" stroke="#fff" stroke-width="6"/><line x1="1" y1="7" x2="21" y2="7" stroke="#e0201a" stroke-width="4" stroke-dasharray="4 3"/></svg>Road closed</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><use href="#s-bridgeX"/></svg>Bridge closed / damaged</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><use href="#s-bridgeOK"/></svg>Bridge reopened</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><use href="#s-hazard"/></svg>Hazard / damage report</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><use href="#s-shelter"/></svg>Shelter</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><use href="#s-gauge"/></svg>USGS gauge (live)</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><use href="#s-civic"/></svg>Facility</li>
+        <li><svg viewBox="0 0 22 22" width="22" height="18"><circle cx="11" cy="11" r="9" fill="none" stroke="#1d2326" stroke-width="1.5" stroke-dasharray="3 2"/></svg>Approximate location</li>
+      </ul>
+    </div>
+    <div class="credit">Imagery: USGS The National Map (NAIP), predates flood</div>
+  </div>
+
+  <aside class="panel">
+    <section>
+      <h2>San Juan R. at Pagosa Springs · USGS 09342500</h2>
+      <div class="kpis">
+        <div class="kpi"><b id="kNowL">Now</b><span id="kNow">–</span><small id="kNowS">loading</small></div>
+        <div class="kpi"><b>Crest 1 · Oct 23</b><span class="red" id="kP1">–</span><small id="kP1S"></small></div>
+        <div class="kpi"><b>Crest 2 · Nov 1</b><span class="red" id="kP2">–</span><small id="kP2S"></small></div>
+      </div>
+      <div class="hrow">
+        <div class="seg" role="group" aria-label="Hydrograph variable"><button id="pStage" aria-pressed="true">Stage ft</button><button id="pFlow" aria-pressed="false">Flow cfs</button></div>
+        <div class="hover" id="hover" aria-live="polite"></div>
+      </div>
+      <svg id="hydro" viewBox="0 0 420 220" role="img" aria-label="Hydrograph of the San Juan River at Pagosa Springs from October 20, 2026 to now"></svg>
+      <p class="note">Full record since Oct 20, read live from USGS every time the page opens. Flood stage 10.5 ft; 1911 record 17.8 ft. Provisional data. Hover the chart for readings.</p>
+      <table class="g" id="gtab"><thead><tr><th>Archuleta County gauges</th><th>Latest</th><th>Peak since Oct 20</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table>
+      <div id="alerts"></div>
+    </section>
+
+    <section>
+      <h2>Current status · as of Nov 5</h2>
+      <ul class="items">
+        <li><span class="pill grn">Lifted</span><div><div class="t">Most evacuation orders lifted Nov 3, 3:15 p.m.</div><div class="d">Homes on Hermosa St and San Juan St remain under mandatory evacuation. Stay away from riverbanks and barricades.<sup><a href="#s3">3</a></sup></div></div></li>
+        <li><span class="pill red">Closed</span><div><div class="t">Hot Springs Blvd bridge</div><div class="d">Town says it is expected to reopen shortly (Nov 5). Nov 3 street closures: Hermosa, San Juan, N 5th, Hot Springs Blvd (US 160 to San Juan St), S 6th.<sup><a href="#s3">3</a></sup></div></div></li>
+        <li><span class="pill grn">Open</span><div><div class="t">US 160 First St bridge, 14th St, N 7th St</div><div class="d">First St bridge and 14th St reopened late Nov 2; N 7th St open Nov 4.<sup><a href="#s3">3</a></sup></div></div></li>
+        <li><span class="pill amb">Water</span><div><div class="t">Limit water use; avoid the river</div><div class="d">Sewer repairs continue with crews from Durango and Boulder. Residents asked to cut nonessential use (Nov 4). Sewage was discharged near the First St bridge.<sup><a href="#s3">3</a></sup></div></div></li>
+        <li><span class="pill red">Damaged</span><div><div class="t">US 160 Piedra River bridge</div><div class="d">~22 mi west; buckled with a section gone (last report Nov 2).<sup><a href="#s5">5</a></sup></div></div></li>
+        <li><span class="pill blu">Help</span><div><div class="t">Shelter, cleanup and info</div><div class="d">Shelter: PLPOA Clubhouse, 230 Port Ave. Free volunteer cleanup: Crisis Cleanup 970-283-7325 (through Nov 6). Call or text 211. Incident line 970-508-9928, 8 a.m.–10 p.m.<sup><a href="#s3">3</a></sup></div></div></li>
+        <li><span class="pill blu">Federal</span><div><div class="t">Major disaster declaration requested</div><div class="d">FEMA damage assessment began Oct 27; no federal assistance approved as of Nov 5.<sup><a href="#s3">3</a>,<a href="#s7">7</a></sup></div></div></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Flood timeline</h2>
+      <ol class="tl">
+        <li><div class="when">Oct 22 – 26</div><div class="what">More than 6 in of rain across Archuleta County (town 5.2–5.8 in); 20 in of snow at Wolf Creek. October average is 2.27 in.<sup><a href="#s4">4</a></sup></div></li>
+        <li class="crest"><div class="when">Fri Oct 23 · ~5:45 a.m.</div><div class="what">San Juan crests at 15.02 ft, second-highest on record. Piedra (10.48 ft), Navajo (7.8 ft) and Rio Blanco (5.56 ft) set records.<sup><a href="#s4">4</a></sup></div></li>
+        <li><div class="when">Tue Oct 27</div><div class="what">County reports ~800 structures affected, 540 of them homes. Town estimates ~$38M damage in town limits, ~$9M to sewer. No known deaths or injuries. FEMA damage assessment begins.<sup><a href="#s4">4</a>,<a href="#s3">3</a></sup></div></li>
+        <li><div class="when">Sat Oct 31</div><div class="what">Gov. Polis requests a major disaster declaration for Archuleta and Rio Grande counties (~$27M initial public damage).<sup><a href="#s7">7</a></sup></div></li>
+        <li><div class="when">Sun Nov 1 · 11:56 a.m.</div><div class="what">"Evacuate now" for low-lying areas on the San Juan, Rio Blanco, Navajo and Piedra. Forecast crest raised to 21.84 ft. US 160 closed to inbound traffic at 2 p.m.<sup><a href="#s5">5</a>,<a href="#s6">6</a></sup></div></li>
+        <li class="crest"><div class="when">Sun Nov 1 · evening</div><div class="what" id="tlCrest2">San Juan crests near 17 ft, below the forecast.<sup><a href="#s1">1</a>,<a href="#s6">6</a></sup></div></li>
+        <li><div class="when">Mon Nov 2</div><div class="what">House strikes the Riverwalk bridge; museum bank erodes; Piedra US 160 bridge damaged; Aspen Springs cut off; cell and internet down. First St bridge reopens late evening.<sup><a href="#s5">5</a>,<a href="#s9">9</a></sup></div></li>
+        <li><div class="when">Tue Nov 3</div><div class="what">Election Day at relocated voter centers.<sup><a href="#s8">8</a></sup></div></li>
+        <li class="ok"><div class="when">Tue Nov 3 · 3:15 p.m.</div><div class="what">Most mandatory evacuation orders lifted; Hermosa St and San Juan St remain.<sup><a href="#s3">3</a></sup></div></li>
+        <li><div class="when">Wed Nov 4 – Thu Nov 5</div><div class="what">Water-use limits; sewer repairs with outside crews; Hot Springs Blvd bridge expected to reopen.<sup><a href="#s3">3</a></sup></div></li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Get the data</h2>
+      <p class="note" style="margin-top:0">Every gauge reading in Archuleta County since Oct 20, and every feature on this map.</p>
+      <div class="dl"><button id="dlCsv" disabled>Gauge record · CSV</button><button id="dlGeo">Map features · GeoJSON</button></div>
+      <div class="apilog" id="apilog"></div>
+    </section>
+
+    <section>
+      <h2>Map layers</h2>
+      <div class="layers" id="layers"></div>
+    </section>
+
+    <section class="src">
+      <h2>Data sources</h2>
+      <ol>
+        <li id="s1"><a href="https://waterdata.usgs.gov/monitoring-location/09342500/" target="_blank" rel="noopener">USGS Water Services</a>, instantaneous values, live (provisional)</li>
+        <li id="s2"><a href="https://api.weather.gov/alerts/active?zone=COC007" target="_blank" rel="noopener">NWS alerts API</a>, Archuleta County, live</li>
+        <li id="s3"><a href="https://www.pagosasprings.co.gov/349/October-2026-Flood-Recovery" target="_blank" rel="noopener">Town of Pagosa Springs, October 2026 Flood Recovery</a>, updated Nov 5</li>
+        <li id="s4"><a href="https://coyotegulch.blog/2026/11/01/unprecedented-area-experiences-historic-flooding-damage-pagosasprings-sun-sanjuanriver/" target="_blank" rel="noopener">Pagosa Springs Sun, "Unprecedented" (Oct 29), via Coyote Gulch</a></li>
+        <li id="s5"><a href="https://www.pagosasun.com/stories/urgent-flood-warning-evacuate-now,158299" target="_blank" rel="noopener">Pagosa Springs Sun, "Evacuate now" (Nov 1)</a> · <a href="https://www.pagosasun.com/stories/sheriffs-office-provides-update-on-evacuations-bridge-damage,158414" target="_blank" rel="noopener">IMT briefing (Nov 2)</a></li>
+        <li id="s6"><a href="https://www.denver7.com/news/local-news/some-pagosa-springs-residents-businesses-urged-to-evacuate-ahead-of-possible-historic-river-crest" target="_blank" rel="noopener">Denver7, evacuations and crest (Nov 1–3)</a></li>
+        <li id="s7"><a href="https://www.kunc.org/news/2026-11-02/gov-polis-requests-27-million-in-flood-recovery-funding-from-the-trump-administration" target="_blank" rel="noopener">KUNC/KSUT, disaster request (Nov 2)</a></li>
+        <li id="s8"><a href="https://www.coloradosos.gov/pubs/newsRoom/pressReleases/2026/PR20261101Pagosa.html" target="_blank" rel="noopener">Colorado SOS, voting relocations</a></li>
+        <li id="s9"><a href="https://www.pagosasun.com/stories/town-issues-nov-2-flooding-update,158409" target="_blank" rel="noopener">Town Nov 2 update</a> · <a href="https://www.rmpbs.org/news/science-environment/historic-back-to-back-floods-shock-pagosa-springs-residents" target="_blank" rel="noopener">Rocky Mountain PBS (Nov 3)</a></li>
+        <li>Imagery: <a href="https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer" target="_blank" rel="noopener">USGS The National Map, USGSImageryOnly</a>, public domain</li>
+      </ol>
+      <p>Official updates: pagosasprings.co.gov · alerts: text 81147 to 888777 · roads: cotrip.org</p>
+    </section>
+    <section>
+      <p class="disc">Independent planning-level product, not an official source. River, highways and bridges digitized from imagery; dashed-ring sites are approximate. Evacuation areas are schematic river-corridor buffers, not official boundaries. Imagery predates the flood. Not for navigation or life-safety decisions; follow ACSO, the Town of Pagosa Springs and CDOT.</p>
+    </section>
+  </aside>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="rgba(255,59,47,.22)"/><line x1="0" y1="0" x2="0" y2="7" stroke="#ff3b2f" stroke-width="1.8" stroke-opacity=".85"/></pattern>
+    <symbol id="s-bridgeX" viewBox="0 0 22 22"><rect x="2" y="2" width="18" height="18" fill="#c8291f" stroke="#fff" stroke-width="1.8"/><path d="M7 7l8 8M15 7l-8 8" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></symbol>
+    <symbol id="s-bridgeOK" viewBox="0 0 22 22"><rect x="2" y="2" width="18" height="18" fill="#2f7d4f" stroke="#fff" stroke-width="1.8"/><path d="M6.5 11.5l3 3 6-7" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="s-hazard" viewBox="0 0 22 22"><path d="M11 1.8L21 19.5H1z" fill="#f0b020" stroke="#1d2326" stroke-width="1.3"/><rect x="10" y="7.5" width="2" height="6.5" fill="#1d2326"/><rect x="10" y="15.5" width="2" height="2" fill="#1d2326"/></symbol>
+    <symbol id="s-shelter" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9.5" fill="#2f7d4f" stroke="#fff" stroke-width="1.8"/><path d="M5.5 11.5L11 6.5l5.5 5M7.5 10v5.5h7V10" stroke="#fff" stroke-width="1.8" fill="none" stroke-linejoin="round"/></symbol>
+    <symbol id="s-gauge" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9.5" fill="#fff" stroke="#3d7fb0" stroke-width="2.4"/><path d="M11 5v12M8 8h3M8 11h3M8 14h3" stroke="#3d7fb0" stroke-width="1.6"/></symbol>
+    <symbol id="s-civic" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" rx="2" fill="#2c5d8a" stroke="#fff" stroke-width="1.8"/><circle cx="11" cy="11" r="3" fill="#fff"/></symbol>
+    <symbol id="s-med" viewBox="0 0 22 22"><rect x="3" y="3" width="16" height="16" rx="2" fill="#fff" stroke="#c8291f" stroke-width="1.6"/><path d="M11 6.5v9M6.5 11h9" stroke="#c8291f" stroke-width="2.8"/></symbol>
+  </defs>
+</svg>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script>
+window.HYDRO_FALLBACK=[["2026-10-20T10:00",5.65,518.0],["2026-10-20T11:00",5.62,508.0],["2026-10-20T12:00",5.61,504.0],["2026-10-20T13:00",5.62,508.0],["2026-10-20T14:00",5.61,504.0],["2026-10-20T15:00",5.61,504.0],["2026-10-20T16:00",5.62,508.0],["2026-10-20T17:00",5.6,501.0],["2026-10-20T18:00",5.57,491.0],["2026-10-20T19:00",5.58,494.0],["2026-10-20T20:00",5.6,501.0],["2026-10-20T21:00",5.6,501.0],["2026-10-20T22:00",5.61,504.0],["2026-10-20T23:00",5.58,494.0],["2026-10-21T00:00",5.61,504.0],["2026-10-21T01:00",5.59,498.0],["2026-10-21T02:00",5.57,491.0],["2026-10-21T03:00",5.58,494.0],["2026-10-21T04:00",5.53,477.0],["2026-10-21T05:00",5.54,480.0],["2026-10-21T06:00",5.53,477.0],["2026-10-21T07:00",5.53,477.0],["2026-10-21T08:00",5.52,474.0],["2026-10-21T09:00",5.51,470.0],["2026-10-21T10:00",5.47,457.0],["2026-10-21T11:00",5.47,457.0],["2026-10-21T12:00",5.46,454.0],["2026-10-21T13:00",5.45,450.0],["2026-10-21T14:00",5.49,464.0],["2026-10-21T15:00",5.46,454.0],["2026-10-21T16:00",5.47,457.0],["2026-10-21T17:00",5.48,460.0],["2026-10-21T18:00",5.51,470.0],["2026-10-21T19:00",5.58,494.0],["2026-10-21T20:00",5.6,501.0],["2026-10-21T21:00",5.68,529.0],["2026-10-21T22:00",5.94,623.0],["2026-10-21T23:00",6.25,744.0],["2026-10-22T00:00",6.76,1090.0],["2026-10-22T01:00",7.24,1480.0],["2026-10-22T02:00",7.73,1890.0],["2026-10-22T03:00",7.89,2030.0],["2026-10-22T04:00",8.04,2160.0],["2026-10-22T05:00",7.98,2110.0],["2026-10-22T06:00",8.18,2290.0],["2026-10-22T07:00",8.37,2460.0],["2026-10-22T08:00",8.57,2640.0],["2026-10-22T09:00",8.59,2660.0],["2026-10-22T10:00",8.49,2570.0],["2026-10-22T11:00",8.46,2540.0],["2026-10-22T12:00",8.46,2540.0],["2026-10-22T13:00",8.66,2720.0],["2026-10-22T14:00",8.86,2910.0],["2026-10-22T15:00",9.29,3310.0],["2026-10-22T16:00",9.73,3730.0],["2026-10-22T17:00",10.42,4400.0],["2026-10-22T18:00",11.33,5310.0],["2026-10-22T19:00",11.79,5780.0],["2026-10-22T20:00",12.29,6300.0],["2026-10-22T21:00",12.6,6620.0],["2026-10-22T22:00",13.06,7110.0],["2026-10-22T23:00",13.58,7660.0],["2026-10-23T00:00",14.18,8310.0],["2026-10-23T06:00",14.9,9100.0],["2026-10-23T07:00",14.54,8710.0],["2026-10-23T08:00",14.37,8520.0],["2026-10-23T09:00",14.19,8320.0],["2026-10-23T10:00",13.93,8040.0],["2026-10-23T11:00",13.61,7700.0],["2026-10-23T12:00",13.53,7610.0],["2026-10-23T13:00",13.2,7260.0],["2026-10-23T14:00",13.0,7040.0],["2026-10-23T15:00",12.96,7000.0],["2026-10-23T16:00",12.52,6540.0],["2026-10-23T17:00",12.27,6280.0],["2026-10-23T18:00",12.09,6090.0],["2026-10-23T19:00",12.0,6000.0],["2026-10-23T20:00",11.69,5680.0],["2026-10-23T21:00",11.63,5610.0],["2026-10-23T22:00",11.52,5500.0],["2026-10-23T23:00",11.36,5340.0],["2026-10-24T00:00",11.3,5280.0],["2026-10-24T01:00",11.06,5040.0],["2026-10-24T02:00",10.8,4770.0],["2026-10-24T03:00",10.61,4590.0],["2026-10-24T04:00",10.58,4560.0],["2026-10-24T05:00",10.27,4250.0],["2026-10-24T06:00",10.29,4270.0],["2026-10-24T07:00",10.23,4210.0],["2026-10-24T08:00",10.1,4080.0],["2026-10-24T09:00",10.09,4070.0],["2026-10-24T10:00",9.8,3790.0],["2026-10-24T11:00",9.78,3770.0],["2026-10-24T12:00",9.75,3750.0],["2026-10-24T13:00",9.61,3610.0],["2026-10-24T14:00",9.62,3620.0],["2026-10-24T15:00",9.72,3720.0],["2026-10-24T16:00",9.87,3860.0],["2026-10-24T17:00",10.02,4010.0],["2026-10-24T18:00",10.07,4050.0],["2026-10-24T19:00",10.39,4370.0],["2026-10-24T20:00",10.59,4570.0],["2026-10-24T21:00",10.63,4610.0],["2026-10-24T22:00",10.48,4460.0],["2026-10-24T23:00",10.35,4330.0],["2026-10-25T00:00",10.35,4330.0],["2026-10-25T01:00",10.2,4180.0],["2026-10-25T02:00",10.06,4040.0],["2026-10-25T03:00",9.85,3840.0],["2026-10-25T04:00",9.92,3910.0],["2026-10-25T05:00",9.76,3750.0],["2026-10-25T06:00",9.73,3730.0],["2026-10-25T07:00",9.65,3650.0],["2026-10-25T08:00",9.61,3610.0],["2026-10-25T09:00",9.48,3490.0],["2026-10-25T10:00",9.37,3380.0],["2026-10-25T11:00",9.39,3400.0],["2026-10-25T12:00",9.43,3440.0],["2026-10-25T13:00",9.3,3320.0],["2026-10-25T14:00",9.28,3300.0],["2026-10-25T15:00",9.27,3290.0],["2026-10-25T16:00",9.17,3190.0],["2026-10-25T17:00",9.13,3160.0],["2026-10-25T18:00",9.2,3220.0],["2026-10-25T19:00",9.08,3110.0],["2026-10-25T20:00",9.02,3050.0],["2026-10-25T21:00",9.24,3260.0],["2026-10-25T22:00",9.23,3250.0],["2026-10-25T23:00",9.18,3200.0],["2026-10-26T00:00",9.2,3220.0],["2026-10-26T01:00",8.96,3000.0],["2026-10-26T02:00",8.94,2980.0],["2026-10-26T03:00",8.95,2990.0],["2026-10-26T04:00",8.8,2850.0],["2026-10-26T05:00",8.75,2800.0],["2026-10-26T06:00",8.73,2790.0],["2026-10-26T07:00",8.63,2690.0],["2026-10-26T08:00",8.57,2640.0],["2026-10-26T09:00",8.51,2590.0],["2026-10-26T10:00",8.44,2520.0],["2026-10-26T11:00",8.38,2470.0],["2026-10-26T12:00",8.32,2410.0],["2026-10-26T13:00",8.31,2410.0],["2026-10-26T14:00",8.25,2350.0],["2026-10-26T15:00",8.18,2290.0],["2026-10-26T16:00",8.25,2350.0],["2026-10-26T17:00",8.21,2320.0],["2026-10-26T18:00",8.24,2340.0],["2026-10-26T19:00",8.23,2330.0],["2026-10-26T20:00",8.19,2300.0],["2026-10-26T21:00",8.17,2280.0],["2026-10-26T22:00",8.09,2210.0],["2026-10-26T23:00",7.99,2120.0],["2026-10-27T00:00",8.0,2130.0],["2026-10-27T01:00",8.01,2140.0],["2026-10-27T02:00",7.93,2070.0],["2026-10-27T03:00",7.93,2070.0],["2026-10-27T04:00",7.92,2060.0],["2026-10-27T05:00",7.82,1970.0],["2026-10-27T06:00",7.82,1970.0],["2026-10-27T07:00",7.82,1970.0],["2026-10-27T08:00",7.77,1930.0],["2026-10-27T09:00",7.72,1890.0],["2026-10-27T10:00",7.67,1840.0],["2026-10-27T11:00",7.58,1770.0],["2026-10-27T12:00",7.58,1770.0],["2026-10-27T13:00",7.56,1750.0],["2026-10-27T14:00",7.54,1730.0],["2026-10-27T15:00",7.53,1720.0],["2026-10-27T16:00",7.51,1710.0],["2026-10-27T17:00",7.47,1670.0],["2026-10-27T18:00",7.47,1670.0],["2026-10-27T19:00",7.48,1680.0],["2026-10-27T20:00",7.49,1690.0],["2026-10-27T21:00",7.47,1670.0],["2026-10-27T22:00",7.45,1650.0],["2026-10-27T23:00",7.44,1650.0],["2026-10-28T00:00",7.39,1600.0],["2026-10-28T01:00",7.37,1590.0],["2026-10-28T02:00",7.33,1550.0],["2026-10-28T03:00",7.32,1550.0],["2026-10-28T04:00",7.29,1520.0],["2026-10-28T05:00",7.27,1500.0],["2026-10-28T06:00",7.25,1490.0],["2026-10-28T07:00",7.24,1480.0],["2026-10-28T08:00",7.2,1450.0],["2026-10-28T09:00",7.18,1430.0],["2026-10-28T10:00",7.11,1370.0],["2026-10-28T11:00",7.08,1350.0],["2026-10-28T12:00",7.09,1350.0],["2026-10-28T13:00",7.04,1310.0],["2026-10-28T14:00",7.06,1330.0],["2026-10-28T15:00",7.02,1300.0],["2026-10-28T16:00",7.04,1310.0],["2026-10-28T17:00",7.02,1300.0],["2026-10-28T18:00",7.01,1290.0],["2026-10-28T19:00",7.02,1300.0],["2026-10-28T20:00",6.98,1270.0],["2026-10-28T21:00",6.97,1260.0],["2026-10-28T22:00",6.97,1260.0],["2026-10-28T23:00",6.97,1260.0],["2026-10-29T00:00",6.95,1240.0],["2026-10-29T01:00",6.94,1230.0],["2026-10-29T02:00",6.9,1200.0],["2026-10-29T03:00",6.89,1190.0],["2026-10-29T04:00",6.86,1170.0],["2026-10-29T05:00",6.86,1170.0],["2026-10-29T06:00",6.85,1160.0],["2026-10-29T07:00",6.84,1150.0],["2026-10-29T08:00",6.81,1130.0],["2026-10-29T09:00",6.75,1080.0],["2026-10-29T10:00",6.72,1060.0],["2026-10-29T11:00",6.72,1060.0],["2026-10-29T12:00",6.68,1030.0],["2026-10-29T13:00",6.67,1020.0],["2026-10-29T14:00",6.68,1030.0],["2026-10-29T15:00",6.69,1030.0],["2026-10-29T16:00",6.68,1030.0],["2026-10-29T17:00",6.65,1000.0],["2026-10-29T18:00",6.65,1000.0],["2026-10-29T19:00",6.64,995.0],["2026-10-29T20:00",6.64,995.0],["2026-10-29T21:00",6.64,995.0],["2026-10-29T22:00",6.64,995.0],["2026-10-29T23:00",6.62,979.0],["2026-10-30T00:00",6.61,971.0],["2026-10-30T01:00",6.58,948.0],["2026-10-30T02:00",6.56,932.0],["2026-10-30T03:00",6.55,925.0],["2026-10-30T04:00",6.54,917.0],["2026-10-30T05:00",6.53,909.0],["2026-10-30T06:00",6.53,909.0],["2026-10-30T07:00",6.51,894.0],["2026-10-30T08:00",6.5,886.0],["2026-10-30T09:00",6.46,856.0],["2026-10-30T10:00",6.44,840.0],["2026-10-30T11:00",6.41,818.0],["2026-10-30T12:00",6.39,802.0],["2026-10-30T13:00",6.38,797.0],["2026-10-30T14:00",6.39,802.0],["2026-10-30T15:00",6.38,797.0],["2026-10-30T16:00",6.4,810.0],["2026-10-30T17:00",6.39,802.0],["2026-10-30T18:00",6.37,793.0],["2026-10-30T19:00",6.37,793.0],["2026-10-30T20:00",6.36,789.0],["2026-10-30T21:00",6.37,793.0],["2026-10-30T22:00",6.34,780.0],["2026-10-30T23:00",6.36,789.0],["2026-10-31T00:00",6.38,797.0],["2026-10-31T01:00",6.41,818.0],["2026-10-31T02:00",6.48,871.0],["2026-10-31T03:00",6.57,940.0],["2026-10-31T04:00",6.75,1080.0],["2026-10-31T05:00",6.97,1260.0],["2026-10-31T06:00",7.14,1400.0],["2026-10-31T07:00",7.12,1380.0],["2026-10-31T08:00",7.07,1340.0],["2026-10-31T09:00",6.98,1270.0],["2026-10-31T10:00",6.9,1200.0],["2026-10-31T11:00",6.81,1130.0],["2026-10-31T12:00",6.76,1090.0],["2026-10-31T13:00",6.69,1030.0],["2026-10-31T14:00",6.68,1030.0],["2026-10-31T15:00",6.65,1000.0],["2026-10-31T16:00",6.63,987.0],["2026-10-31T17:00",6.61,971.0],["2026-10-31T18:00",6.62,979.0],["2026-10-31T19:00",6.61,971.0],["2026-10-31T20:00",6.62,979.0],["2026-10-31T21:00",6.62,979.0],["2026-10-31T22:00",6.6,963.0],["2026-10-31T23:00",6.58,948.0],["2026-11-01T00:00",6.57,940.0],["2026-11-01T01:00",6.53,909.0],["2026-11-01T02:00",6.51,894.0],["2026-11-01T03:00",6.52,901.0],["2026-11-01T04:00",6.55,925.0],["2026-11-01T05:00",6.6,963.0],["2026-11-01T06:00",6.77,1100.0],["2026-11-01T07:00",7.03,1310.0],["2026-11-01T08:00",7.39,1600.0],["2026-11-01T09:00",7.84,1990.0],["2026-11-01T10:00",8.39,2480.0],["2026-11-01T11:00",9.07,3100.0],["2026-11-01T12:00",9.52,3530.0],["2026-11-01T13:00",10.05,4040.0],["2026-11-01T14:00",10.53,4510.0],["2026-11-01T16:00",12.95,6990.0],["2026-11-01T17:00",14.25,8390.0],["2026-11-01T18:00",15.94,10300.0],["2026-11-01T19:00",16.56,11000.0],["2026-11-01T20:00",16.81,11200.0],["2026-11-01T21:00",16.19,10500.0],["2026-11-02T09:00",13.51,7590.0],["2026-11-02T10:00",13.46,7530.0],["2026-11-02T11:00",13.15,7200.0],["2026-11-02T12:00",12.65,6670.0],["2026-11-02T13:00",12.62,6640.0],["2026-11-02T14:00",12.43,6440.0],["2026-11-02T15:00",12.25,6250.0],["2026-11-02T16:00",11.98,5970.0],["2026-11-02T17:00",11.83,5820.0],["2026-11-02T18:00",11.73,5720.0],["2026-11-02T19:00",11.69,5680.0],["2026-11-02T20:00",11.22,5200.0],["2026-11-02T21:00",11.16,5140.0],["2026-11-02T22:00",10.96,4930.0],["2026-11-02T23:00",10.84,4810.0],["2026-11-03T00:00",10.74,4710.0],["2026-11-03T01:00",10.65,4630.0],["2026-11-03T02:00",10.41,4390.0],["2026-11-03T03:00",10.33,4310.0],["2026-11-03T04:00",10.25,4230.0],["2026-11-03T05:00",10.14,4120.0],["2026-11-03T06:00",10.02,4010.0],["2026-11-03T07:00",9.96,3950.0],["2026-11-03T08:00",9.85,3840.0]];;
+(function(){
+  var START='2026-10-20T00:00-06:00';
+  var TZ='America/Denver';
+  var fmtT=new Intl.DateTimeFormat('en-US',{timeZone:TZ,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  var fmtD=new Intl.DateTimeFormat('en-US',{timeZone:TZ,month:'short',day:'numeric'});
+  var logEl=document.getElementById('apilog');
+  function log(name,url,status,ms,extra){var ok=status>=200&&status<300;logEl.insertAdjacentHTML('beforeend','<div><b class="'+(ok?'':'err')+'">'+status+'</b> '+name+' · '+ms+' ms'+(extra?' · '+extra:'')+'<br>'+url.replace(/&/g,'&amp;')+'</div>');}
+  function getJSON(name,url){var t=performance.now();return fetch(url,{headers:{'Accept':'application/geo+json, application/json'}}).then(function(r){var ms=Math.round(performance.now()-t);return r.json().then(function(j){log(name,url,r.status,ms);return j;});}).catch(function(e){log(name,url,0,Math.round(performance.now()-t),'failed');throw e;});}
+  var fmtN=function(v,d){return Number(v).toLocaleString('en-US',{maximumFractionDigits:d==null?0:d,minimumFractionDigits:d||0});};
+
+  /* ---------------- USGS: all Archuleta County gauges since Oct 20 ---------------- */
+  var SERIES={}, SITES={}, mainStage=[], mainFlow=[], param='stage';
+  var usgsUrl='https://waterservices.usgs.gov/nwis/iv/?format=json&countyCd=08007&startDT='+encodeURIComponent(START)+'&parameterCd=00060,00065&siteStatus=active';
+  getJSON('USGS instantaneous values · Archuleta County',usgsUrl).then(function(j){
+    j.value.timeSeries.forEach(function(s){
+      var id=s.sourceInfo.siteCode[0].value, p=s.variable.variableCode[0].value;
+      var vals=s.values[0].value.filter(function(x){return +x.value>-9000;}).map(function(x){return [Date.parse(x.dateTime),+x.value,x.qualifiers.join(' ')];});
+      SITES[id]=SITES[id]||{id:id,name:s.sourceInfo.siteName,lat:s.sourceInfo.geoLocation.geogLocation.latitude,lng:s.sourceInfo.geoLocation.geogLocation.longitude};
+      SERIES[id+'|'+p]=vals;
+    });
+    mainStage=SERIES['09342500|00065']||[]; mainFlow=SERIES['09342500|00060']||[];
+    if(!mainStage.length) throw new Error('no main gauge');
+    afterData(true);
+  }).catch(function(){
+    var tz=function(s){return s<'2026-11-01T02:00'?':00-06:00':':00-07:00';};
+    mainStage=window.HYDRO_FALLBACK.map(function(r){return [Date.parse(r[0]+tz(r[0])),r[1],'archived hourly'];});
+    mainFlow=window.HYDRO_FALLBACK.map(function(r){return [Date.parse(r[0]+tz(r[0])),r[2],'archived hourly'];});
+    SITES['09342500']={id:'09342500',name:'SAN JUAN RIVER AT PAGOSA SPRINGS, CO',lat:37.26552778,lng:-107.011};
+    SERIES['09342500|00065']=mainStage; SERIES['09342500|00060']=mainFlow;
+    document.getElementById('liveStamp').textContent='USGS unreachable · archived to Nov 3';
+    document.getElementById('liveStamp').classList.remove('live');
+    afterData(false);
+  });
+
+  function peakIn(arr,a,b){var best=null;arr.forEach(function(r){if(r[0]>=a&&r[0]<b&&(!best||r[1]>best[1]))best=r;});return best;}
+  var SPLIT=Date.parse('2026-10-29T00:00-06:00');
+  function afterData(live){
+    var last=mainStage[mainStage.length-1], lastQ=mainFlow[mainFlow.length-1];
+    if(live) document.getElementById('liveStamp').textContent='Live · '+fmtT.format(last[0]);
+    document.getElementById('kNowL').textContent='Now · '+fmtT.format(last[0]).split(', ')[1];
+    var now=document.getElementById('kNow'); now.textContent=fmtN(last[1],2)+' ft'; now.className=last[1]>=10.5?'red':'grn';
+    document.getElementById('kNowS').textContent=(lastQ?fmtN(lastQ[1])+' cfs · ':'')+(last[1]>=10.5?'above flood stage':'below flood stage');
+    var p1=peakIn(mainStage,0,SPLIT), p2=peakIn(mainStage,SPLIT,Infinity), q1=peakIn(mainFlow,0,SPLIT), q2=peakIn(mainFlow,SPLIT,Infinity);
+    if(p1){document.getElementById('kP1').textContent=fmtN(p1[1],2)+' ft';document.getElementById('kP1S').textContent=fmtT.format(p1[0]).split(', ')[1]+(q1?' · '+fmtN(q1[1])+' cfs':'');}
+    if(p2){document.getElementById('kP2').textContent=fmtN(p2[1],2)+' ft';document.getElementById('kP2S').textContent=fmtT.format(p2[0]).split(', ')[1]+(q2?' · '+fmtN(q2[1])+' cfs':'');
+      document.getElementById('tlCrest2').innerHTML='San Juan crests at '+fmtN(p2[1],2)+' ft ('+fmtT.format(p2[0])+'), about 1 ft below the 1911 record and well below the 21.84 ft forecast.<sup><a href="#s1">1</a>,<a href="#s6">6</a></sup>';}
+    window.__peaks={p1:p1,p2:p2};
+    drawHydro();
+    gaugeTable(); try{gaugeMarkers();}catch(e){} document.getElementById('dlCsv').disabled=false;
+    if(!live) document.querySelector('#gtab tbody').insertAdjacentHTML('beforeend','<tr><td colspan="3" style="color:var(--muted)">USGS unreachable: showing the archived hourly record (Oct 20 – Nov 3).</td></tr>');
+  }
+
+  /* ---------------- hydrograph ---------------- */
+  var EVENTS=[['2026-11-01T11:56-07:00','Evacuate now'],['2026-11-03T15:15-07:00','Orders lifted']];
+  function drawHydro(){
+    var svg=document.getElementById('hydro'), d=param==='stage'?mainStage:mainFlow; if(!d.length) return;
+    var W=420,H=220,L=40,R=8,T=12,B=26;
+    var t0=Date.parse(START), t1=d[d.length-1][0];
+    var maxV=param==='stage'?20:Math.ceil(Math.max.apply(null,d.map(function(r){return r[1];}))/2000)*2000, minV=param==='stage'?4:0;
+    var x=function(t){return L+(t-t0)/(t1-t0)*(W-L-R)}, y=function(v){return T+(1-(v-minV)/(maxV-minV))*(H-T-B)};
+    var mono='font-family="JetBrains Mono,monospace"', s='';
+    var ticks=param==='stage'?[4,8,12,16,20]:[0,maxV/4,maxV/2,maxV*3/4,maxV];
+    ticks.forEach(function(v){s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#e3dfd2"/><text x="'+(L-5)+'" y="'+(y(v)+3)+'" text-anchor="end" font-size="9" '+mono+' fill="#5b6461">'+(param==='stage'?v:(v>=1000?(v/1000)+'k':v))+'</text>';});
+    s+='<text x="4" y="'+(T+2)+'" font-size="8.5" '+mono+' fill="#5b6461">'+(param==='stage'?'FT':'CFS')+'</text>';
+    for(var dd=Date.parse('2026-10-21T00:00-06:00');dd<=t1;dd+=86400000*3){var xx=x(dd);s+='<line x1="'+xx+'" x2="'+xx+'" y1="'+(H-B)+'" y2="'+(H-B+4)+'" stroke="#5b6461"/><text x="'+xx+'" y="'+(H-B+14)+'" text-anchor="middle" font-size="9" '+mono+' fill="#5b6461">'+fmtD.format(dd)+'</text>';}
+    EVENTS.forEach(function(e){var t=Date.parse(e[0]);if(t>t1)return;var xx=x(t);s+='<line x1="'+xx+'" x2="'+xx+'" y1="'+T+'" y2="'+(H-B)+'" stroke="#2c5d8a" stroke-dasharray="2 3"/><text transform="translate('+(xx-3)+','+(H-B-4)+') rotate(-90)" font-size="8" '+mono+' fill="#2c5d8a">'+e[1].toUpperCase()+'</text>';});
+    function ref(v,c,txt,dash,lx){if(v>maxV)return;s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="'+c+'" stroke-width="1.2" stroke-dasharray="'+dash+'"/><text x="'+(lx||L+4)+'" y="'+(y(v)-3)+'" font-size="8.5" '+mono+' fill="'+c+'">'+txt+'</text>';}
+    if(param==='stage'){ref(17.8,'#1d2326','1911 RECORD 17.8','5 3');ref(10.5,'#c8291f','FLOOD STAGE 10.5','4 3',x(Date.parse('2026-10-26T00:00-06:00')));}
+    var p='',a='M'+x(d[0][0]).toFixed(1)+','+(H-B),prev=null;
+    d.forEach(function(r){var px=x(r[0]).toFixed(1),py=y(Math.max(minV,r[1])).toFixed(1);var gap=prev&&r[0]-prev>3*3600000;p+=(prev===null||gap?'M':'L')+px+','+py;a+='L'+px+','+py;prev=r[0];});
+    a+='L'+x(t1).toFixed(1)+','+(H-B)+'Z';
+    s+='<path d="'+a+'" fill="rgba(61,127,176,.18)"/><path d="'+p+'" fill="none" stroke="#2c5d8a" stroke-width="1.6" stroke-linejoin="round"/>';
+    var pk=window.__peaks||{}, qk={p1:peakIn(mainFlow,0,SPLIT),p2:peakIn(mainFlow,SPLIT,Infinity)};
+    [['p1','start',-5],['p2','end',14]].forEach(function(k){var r=param==='stage'?pk[k[0]]:qk[k[0]];if(!r)return;var px=x(r[0]),py=y(r[1]);s+='<circle cx="'+px+'" cy="'+py+'" r="3.2" fill="#c8291f" stroke="#fff" stroke-width="1.2"/><text x="'+(px+(k[1]==='end'?-6:6))+'" y="'+(py+k[2])+'" text-anchor="'+k[1]+'" font-size="9" font-weight="600" '+mono+' fill="#1d2326">'+fmtN(r[1],param==='stage'?2:0)+' · '+fmtD.format(r[0])+'</text>';});
+    var last=d[d.length-1];s+='<circle cx="'+x(last[0])+'" cy="'+y(last[1])+'" r="3.2" fill="#2f7d4f" stroke="#fff" stroke-width="1.2"/>';
+    s+='<line x1="'+L+'" x2="'+L+'" y1="'+T+'" y2="'+(H-B)+'" stroke="#1d2326"/><line x1="'+L+'" x2="'+(W-R)+'" y1="'+(H-B)+'" y2="'+(H-B)+'" stroke="#1d2326"/>';
+    s+='<line id="hx" x1="0" x2="0" y1="'+T+'" y2="'+(H-B)+'" stroke="#1d2326" stroke-width=".8" visibility="hidden"/><circle id="hc" r="3" fill="#1d2326" visibility="hidden"/>';
+    svg.innerHTML=s;
+    var hx=svg.querySelector('#hx'),hc=svg.querySelector('#hc'),hov=document.getElementById('hover');
+    svg.onmousemove=function(ev){var pt=svg.createSVGPoint();pt.x=ev.clientX;pt.y=ev.clientY;var sp=pt.matrixTransform(svg.getScreenCTM().inverse());var t=t0+(sp.x-L)/(W-L-R)*(t1-t0);var lo=0,hi=d.length-1;while(hi-lo>1){var m=(lo+hi)>>1;if(d[m][0]<t)lo=m;else hi=m;}var r=Math.abs(d[lo][0]-t)<Math.abs(d[hi][0]-t)?d[lo]:d[hi];hx.setAttribute('x1',x(r[0]));hx.setAttribute('x2',x(r[0]));hx.setAttribute('visibility','visible');hc.setAttribute('cx',x(r[0]));hc.setAttribute('cy',y(r[1]));hc.setAttribute('visibility','visible');hov.textContent=fmtT.format(r[0])+' · '+fmtN(r[1],param==='stage'?2:0)+(param==='stage'?' ft':' cfs');};
+    svg.onmouseleave=function(){hx.setAttribute('visibility','hidden');hc.setAttribute('visibility','hidden');hov.textContent='';};
+  }
+  var bS=document.getElementById('pStage'),bF=document.getElementById('pFlow');
+  bS.onclick=function(){param='stage';bS.setAttribute('aria-pressed','true');bF.setAttribute('aria-pressed','false');drawHydro();};
+  bF.onclick=function(){param='flow';bF.setAttribute('aria-pressed','true');bS.setAttribute('aria-pressed','false');drawHydro();};
+
+  function titleCase(n){return n.toLowerCase().replace(/\b(co|nr|abv|blw)\b\.?/g,function(m){return {co:'CO',nr:'nr',abv:'abv',blw:'blw'}[m.replace('.','')];}).replace(/(^|\s)([a-z])/g,function(m,a,b){return a+b.toUpperCase();}).replace(/, Co\.?$/,'');}
+  function gaugeTable(){
+    var rows='',now=Date.now();
+    Object.keys(SITES).sort().forEach(function(id){
+      var st=SERIES[id+'|00065']||[],q=SERIES[id+'|00060']||[],ser=st.length?st:q,unit=st.length?' ft':' cfs';if(!ser.length)return;
+      var last=ser[ser.length-1],pk=peakIn(ser,0,Infinity),qpk=q.length?peakIn(q,0,Infinity):null,stale=now-last[0]>6*3600000;
+      rows+='<tr><td>'+titleCase(SITES[id].name)+'<br><span style="color:var(--muted);font-family:var(--f-mono);font-size:10.5px">'+id+'</span></td><td class="n">'+(stale?'<span class="stale">No data since<br>'+fmtT.format(last[0])+'</span>':fmtN(last[1],2)+unit+'<br><span style="color:var(--muted)">'+fmtT.format(last[0]).split(', ')[1]+'</span>')+'</td><td class="n">'+fmtN(pk[1],2)+unit+(qpk?'<br>'+fmtN(qpk[1])+' cfs':'')+'<br><span style="color:var(--muted)">'+fmtT.format(pk[0])+'</span></td></tr>';
+    });
+    document.querySelector('#gtab tbody').innerHTML=rows;
+  }
+
+  /* ---------------- NWS alerts ---------------- */
+  getJSON('NWS active alerts · Archuleta County','https://api.weather.gov/alerts/active?zone=COC007').then(function(j){
+    var f=j.features||[],box=document.getElementById('alerts');
+    box.innerHTML='<h2 style="margin-top:12px">NWS alerts · now</h2>'+(f.length?f.map(function(a){var p=a.properties;return '<div class="alert"><b>'+p.event+'</b>'+(p.headline||'')+'</div>';}).join(''):'<p class="note" style="margin:0">No active NWS alerts for Archuleta County.</p>');
+  }).catch(function(){});
+
+  /* ---------------- downloads ---------------- */
+  function save(name,type,text){var b=new Blob([text],{type:type}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},2000);}
+  document.getElementById('dlCsv').onclick=function(){
+    var out=['site_no,site_name,parameter,unit,datetime_utc,datetime_local,value,qualifiers'];
+    var fmtL=new Intl.DateTimeFormat('sv-SE',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    Object.keys(SERIES).sort().forEach(function(k){var id=k.split('|')[0],p=k.split('|')[1];SERIES[k].forEach(function(r){out.push([id,'"'+SITES[id].name+'"',p==='00065'?'gage_height':'discharge',p==='00065'?'ft':'cfs',new Date(r[0]).toISOString(),fmtL.format(r[0]),r[1],r[2]].join(','));});});
+    save('pagosa_flood_usgs_gauges_since_2026-10-20.csv','text/csv',out.join('\n'));
+  };
+
+  var lg=document.getElementById('legend'),lt=document.getElementById('lg-t');
+  lt.addEventListener('click',function(){var c=lg.classList.toggle('collapsed');lt.textContent=c?'show':'hide';lt.setAttribute('aria-expanded',String(!c));});
+  if(window.matchMedia('(max-width:860px)').matches){lt.click();}
+
+  if(!window.L||!window.turf){document.getElementById('map').innerHTML='<p style="padding:20px;color:#fff">The map library could not load. The status panel is still current.</p>';return;}
+
+  /* ---------------- map ---------------- */
+  var renderer=L.svg({padding:.5});
+  var map=L.map('map',{zoomControl:false,attributionControl:false,minZoom:9,maxZoom:18,zoomSnap:.25,renderer:renderer});
+  var B_TOWN=L.latLngBounds([37.2565,-107.0185],[37.2722,-106.9985]);
+  var B_AREA=L.latLngBounds([37.228,-107.205],[37.296,-106.978]);
+  var B_CTY=L.latLngBounds([36.99,-107.46],[37.485,-106.77]);
+  map.fitBounds(B_TOWN,{padding:[10,10]});
+  L.control.zoom({position:'topright'}).addTo(map);
+  L.control.scale({position:'bottomright',imperial:true,metric:true,maxWidth:130}).addTo(map);
+  L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:18}).addTo(map);
+  renderer.addTo(map);
+  var pat=document.getElementById('hatch').cloneNode(true);
+  var defs=document.createElementNS('http://www.w3.org/2000/svg','defs');defs.appendChild(pat);
+  renderer._container.insertBefore(defs,renderer._container.firstChild);
+
+  var FEATURES=[];
+  function rec(geom,props){FEATURES.push({type:'Feature',geometry:geom,properties:props});}
+  function strip(h){return h.replace(/<br>/g,' — ').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();}
+
+  /* ---------- geometry (lat,lng) ---------- */
+  // San Juan: digitized on imagery from 37.30 to 37.22; approximate below 37.22
+  var sjUp=[[37.2898,-106.9757],[37.2836,-106.9800],[37.2775,-106.9834],[37.2727,-106.9894],[37.2712,-106.9955],[37.2709,-106.9975],[37.2707,-106.9995],[37.2703,-107.0013],[37.2694,-107.0017],[37.2684,-107.0022],[37.2676,-107.0035],[37.2672,-107.0048],[37.2670,-107.0064],[37.2668,-107.0080],[37.2668,-107.0096],[37.2667,-107.0103],[37.2665,-107.0107]];
+  var sjDown=[[37.2665,-107.0107],[37.2660,-107.0113],[37.2655,-107.0118],[37.2650,-107.0136],[37.2645,-107.0146],[37.2630,-107.0148],[37.2616,-107.0147],[37.2607,-107.0141],[37.2600,-107.0133],[37.2593,-107.0124],[37.2585,-107.0119],[37.2577,-107.0114],[37.2568,-107.0108],[37.2560,-107.0097],[37.2545,-107.0092],[37.2522,-107.0100],[37.2454,-107.0105],[37.2385,-107.0117],[37.2317,-107.0126],[37.2249,-107.0143],[37.2201,-107.0152]];
+  var sjCty=[[37.2201,-107.0152],[37.200,-107.022],[37.180,-107.035],[37.160,-107.045],[37.140,-107.055],[37.120,-107.080],[37.100,-107.120],[37.080,-107.170],[37.065,-107.230],[37.050,-107.300],[37.045,-107.350],[37.045,-107.390]];
+  var sjNE=[[37.420,-106.850],[37.380,-106.900],[37.340,-106.940],[37.310,-106.962],[37.2898,-106.9757]];
+  var piedra=[[37.420,-107.300],[37.360,-107.330],[37.300,-107.340],[37.2400,-107.3440],[37.2300,-107.3445],[37.2250,-107.3460],[37.2200,-107.3490],[37.2150,-107.3500],[37.180,-107.352],[37.130,-107.355],[37.080,-107.375],[37.050,-107.395]];
+  var rioBlanco=[[37.330,-106.780],[37.280,-106.820],[37.230,-106.870],[37.190,-106.920],[37.160,-106.980],[37.135,-107.040],[37.125,-107.075]];
+  var navajo=[[37.080,-106.700],[37.040,-106.780],[37.035,-106.845],[37.050,-106.920],[37.060,-107.000],[37.050,-107.080],[37.040,-107.180],[37.035,-107.260],[37.045,-107.340]];
+  var us160=[[37.2290,-107.4500],[37.2291,-107.3700],[37.2291,-107.3468],[37.2270,-107.3430],[37.2234,-107.3400],[37.2240,-107.3000],[37.2250,-107.2500],[37.2262,-107.2150],[37.2276,-107.2098],[37.2296,-107.1978],[37.2317,-107.1892],[37.2341,-107.1807],[37.2375,-107.1704],[37.2389,-107.1592],[37.2409,-107.1498],[37.2392,-107.1403],[37.2382,-107.1300],[37.2286,-107.1206],[37.2293,-107.1103],[37.2457,-107.0950],[37.2505,-107.0864],[37.2549,-107.0778],[37.2614,-107.0667],[37.2672,-107.0564],[37.2699,-107.0469],[37.2720,-107.0401],[37.2727,-107.0332],[37.2684,-107.0280],[37.2669,-107.0203],[37.2665,-107.0150],[37.2664,-107.0120],[37.2665,-107.0107],[37.2672,-107.0100],[37.2680,-107.0094],[37.2686,-107.0088],[37.2688,-107.0075],[37.2689,-107.0040],[37.2691,-107.0021],[37.2693,-107.0010],[37.2697,-106.9980],[37.2700,-106.9960],[37.2740,-106.9886],[37.2809,-106.9834],[37.2863,-106.9791],[37.2904,-106.9750],[37.3100,-106.9580],[37.3600,-106.9100],[37.4200,-106.8500],[37.4830,-106.8020]];
+  var us84=[[37.2697,-106.9975],[37.2658,-106.9941],[37.2563,-106.9937],[37.2467,-106.9894],[37.2385,-106.9860],[37.2283,-106.9843],[37.2153,-106.9834],[37.1600,-106.9500],[37.1000,-106.9200],[37.0000,-106.8900]];
+  var co151=[[37.2234,-107.3400],[37.2150,-107.3393],[37.2100,-107.3370],[37.1700,-107.3500],[37.1200,-107.3800],[37.0700,-107.4100],[37.0400,-107.4250]];
+  var hsb=[[37.2680,-107.0094],[37.2668,-107.0096],[37.2650,-107.0097],[37.2620,-107.0097],[37.2590,-107.0098],[37.2570,-107.0099]];
+
+  var ll=function(a){return a.map(function(p){return[p[1],p[0]]});};
+  var G={}; function grp(k){return G[k]||(G[k]=L.layerGroup().addTo(map));}
+
+
+  /* evacuation areas (schematic buffers) */
+  var evacNow={color:'#ff3b2f',weight:2,fillColor:'url(#hatch)',fillOpacity:1};
+  var evacLifted={color:'#f0b020',weight:1.6,dashArray:'6 4',fillColor:'#ffffff',fillOpacity:.08};
+  var dtLine=sjUp.slice(6).concat(sjDown.slice(1,15));
+  var dtBuf=turf.buffer(turf.lineString(ll(dtLine)),0.16,{units:'kilometers'});
+  var dtHtml='<b>Downtown evacuation area</b><br>Mandatory order Nov 1. Most orders lifted Nov 3, 3:15 p.m.; homes on Hermosa St and San Juan St remain under order (Nov 5).<br><i>Schematic 160 m river-corridor buffer, not the official boundary.</i>';
+  L.geoJSON(dtBuf,{style:evacNow}).bindPopup(dtHtml).addTo(grp('evac'));
+  rec(dtBuf.geometry,{layer:'evacuation',name:'Downtown evacuation area (schematic)',status:'partially in effect',note:strip(dtHtml)});
+  [[sjUp.slice(0,7),'San Juan River, upstream'],[sjDown.slice(14).concat(sjCty.slice(1)),'San Juan River, downstream'],[sjNE,'San Juan River, upper valley'],[piedra,'Piedra River'],[rioBlanco,'Rio Blanco'],[navajo,'Navajo River']].forEach(function(r){
+    var b=turf.buffer(turf.lineString(ll(r[0])),0.25,{units:'kilometers'});
+    var h='<b>Low-lying areas: '+r[1]+'</b><br>Evacuation ordered Nov 1; most orders lifted Nov 3, 3:15 p.m.<br><i>Schematic corridor.</i>';
+    L.geoJSON(b,{style:evacLifted}).bindPopup(h).addTo(grp('evac'));
+    rec(b.geometry,{layer:'evacuation',name:'Low-lying areas: '+r[1]+' (schematic)',status:'lifted Nov 3',note:strip(h)});
+  });
+
+  /* rivers */
+  function line(pts,c,w,layer,dash){L.polyline(pts,{color:'#fff',weight:w+2.5,opacity:.85,interactive:false,lineJoin:'round'}).addTo(grp(layer));L.polyline(pts,{color:c,weight:w,interactive:false,lineJoin:'round',dashArray:dash}).addTo(grp(layer));}
+  line(sjUp.concat(sjDown.slice(1)),'#3d7fb0',3.2,'water');
+  [sjCty,sjNE,piedra,rioBlanco,navajo].forEach(function(r){line(r,'#3d7fb0',2.4,'water','7 4');});
+
+  /* roads */
+  function road(pts){L.polyline(pts,{color:'#1d2326',weight:5.5,opacity:.8,interactive:false,lineJoin:'round'}).addTo(grp('roads'));L.polyline(pts,{color:'#e0a040',weight:3,interactive:false,lineJoin:'round'}).addTo(grp('roads'));}
+  road(us160);road(us84);road(co151);
+  L.polyline(hsb,{color:'#1d2326',weight:4,opacity:.7,interactive:false}).addTo(grp('roads'));
+  L.polyline(hsb,{color:'#f4e3c0',weight:2,interactive:false}).addTo(grp('roads'));
+
+  function closure(pts,html){rec({type:'LineString',coordinates:pts.map(function(p){return[p[1],p[0]]})},{layer:'closures',name:strip(html.split('<br>')[0]),note:strip(html)});L.polyline(pts,{color:'#fff',weight:8,opacity:.9}).addTo(grp('closures'));L.polyline(pts,{color:'#e0201a',weight:5,dashArray:'8 6'}).bindPopup(html).addTo(grp('closures'));}
+  closure(hsb.slice(0,3),'<b>Hot Springs Blvd</b><br>Bridge closed; town expects it to reopen shortly (Nov 5).');
+  closure(co151.slice(0,3),'<b>CO 151, north end</b><br>Closed at MP 30 by CDOT for rising water (Nov 1).');
+  closure([[37.2291,-107.3520],[37.2291,-107.3468],[37.2270,-107.3430],[37.2250,-107.3415]],'<b>US 160 at the Piedra River</b><br>Bridge severely damaged; through travel to and from Durango cut.');
+
+
+  /* points */
+  function pt(lat,lng,sym,html,layer,size,approx){
+    size=size||22;
+    var ic=L.divIcon({className:'sym'+(approx?' approx':''),html:'<svg width="'+size+'" height="'+size+'" viewBox="0 0 22 22"><use href="#'+sym+'"/></svg>',iconSize:[size,size],iconAnchor:[size/2,size/2],popupAnchor:[0,-size/2]});
+    if(approx) html+='<br><i>Location approximate.</i>';
+    rec({type:'Point',coordinates:[lng,lat]},{layer:layer,symbol:sym.replace('s-',''),name:strip(html.split('<br>')[0]),note:strip(html),approximate:!!approx});
+    return L.marker([lat,lng],{icon:ic,keyboard:true,title:strip(html).slice(0,70)}).bindPopup(html).addTo(grp(layer));
+  }
+  pt(37.2665,-107.0107,'s-bridgeOK','<b>US 160 / First St bridge</b><br>Closed Nov 2 for bank erosion near the museum; <b>reopened late Mon Nov 2</b>.','infra');
+  pt(37.2668,-107.0096,'s-bridgeX','<b>Hot Springs Blvd bridge</b><br>Closed. Town expects it to reopen shortly (Nov 5).','infra');
+  pt(37.2286,-107.3442,'s-bridgeX','<b>US 160 Piedra River bridge</b><br>~22 mi west of town. Buckled; a section gone and supports damaged (last report Nov 2).','infra',26);
+  pt(37.2385,-107.1640,'s-bridgeX','<b>Aspen Springs access bridges</b><br>Both main bridges off US 160 damaged; residents could not drive out (Nov 2).','infra',22,true);
+  pt(37.2234,-107.3400,'s-hazard','<b>CO 151 closure, MP 30</b><br>Closed for rising water Nov 1. Stretches between Pagosa Springs and Arboles washed out in October.','hazard',18);
+  pt(37.2671,-107.0112,'s-hazard','<b>San Juan Historical Museum</b><br>96 Pagosa St. Severe bank erosion (Nov 2).','hazard');
+  pt(37.2648,-107.0141,'s-hazard','<b>Riverwalk pedestrian bridge</b><br>Struck by a house carried downstream Mon Nov 2.','hazard',18,true);
+  pt(37.2661,-107.0118,'s-hazard','<b>Sewage discharge</b><br>Near the 1st St bridge. Avoid river water. Sewer repairs ongoing (Nov 5); limit water use.','hazard',18);
+  pt(37.2650,-107.0705,'s-shelter','<b>Shelter: PLPOA Clubhouse</b><br>230 Port Ave · open since Nov 1','shelter',24,true);
+  pt(37.2470,-106.9893,'s-shelter','<b>Archuleta County Fairgrounds</b><br>344 Hwy 84 · large-animal shelter; Election Day voter center Nov 3','shelter',22,true);
+  pt(37.28528,-107.07833,'s-med','<b>Pagosa Springs Medical Center</b><br>95 S Pagosa Blvd · Level IV trauma','civic');
+  pt(37.2593,-107.0102,'s-civic','<b>Town Hall</b><br>551 Hot Springs Blvd. Office hours Mon–Thu 7:30 a.m.–5 p.m. (from Nov 2).','civic',18);
+  pt(37.2700,-107.0420,'s-civic','<b>Archuleta County Courthouse</b><br>109 Harman Park Dr · relocated voter center Nov 3','civic',18,true);
+  pt(37.4747,-106.7934,'s-hazard','<b>Wolf Creek Ski Area</b><br>Closed during evacuations (Nov 2).','hazard',18);
+
+  /* live USGS gauges */
+  function gaugeMarkers(){
+    Object.keys(SITES).forEach(function(id){
+      var s=SITES[id],st=SERIES[id+'|00065']||[],q=SERIES[id+'|00060']||[],ser=st.length?st:q,unit=st.length?' ft':' cfs';if(!ser.length)return;
+      var last=ser[ser.length-1],pk=peakIn(ser,0,Infinity),stale=Date.now()-last[0]>6*3600000;
+      var h='<b>USGS '+id+'</b><br>'+titleCase(s.name)+'<br>'+(stale?'<b style="color:#c8291f">No data since '+fmtT.format(last[0])+'</b>':'Now '+fmtN(last[1],2)+unit+(q.length&&st.length?' / '+fmtN(q[q.length-1][1])+' cfs':'')+' ('+fmtT.format(last[0])+')')+'<br>Peak since Oct 20: '+fmtN(pk[1],2)+unit+', '+fmtT.format(pk[0]);
+      var ic=L.divIcon({className:'sym gauge-live',html:'<svg width="22" height="22" viewBox="0 0 22 22"><use href="#s-gauge"/></svg>',iconSize:[22,22],iconAnchor:[11,11],popupAnchor:[0,-11]});
+      L.marker([s.lat,s.lng],{icon:ic,title:'USGS '+id}).bindPopup(h).addTo(grp('gauges'));
+      rec({type:'Point',coordinates:[s.lng,s.lat]},{layer:'gauges',name:'USGS '+id+' '+s.name,latest:last[1],latest_time:new Date(last[0]).toISOString(),peak:pk[1],peak_time:new Date(pk[0]).toISOString(),unit:unit.trim()});
+    });
+  }
+  grp('gauges');
+
+  document.getElementById('dlGeo').onclick=function(){save('pagosa_flood_map_features.geojson','application/geo+json',JSON.stringify({type:'FeatureCollection',name:'Pagosa Springs flood situation (schematic, as of 2026-11-05)',features:FEATURES}));};
+
+  /* labels */
+  function lbl(lat,lng,t,cls){L.tooltip({permanent:true,direction:'center',className:'lbl '+cls,interactive:false}).setLatLng([lat,lng]).setContent(t).addTo(grp('labels'));}
+  lbl(37.2700,-107.0060,'Downtown','place townonly');
+  lbl(37.2705,-107.0150,'Pagosa Springs','place areaonly ctyonly');
+  lbl(37.2765,-107.0950,'Pagosa Lakes','place sm areaonly ctyonly');
+  lbl(37.2330,-107.1700,'Aspen Springs','place sm areaonly ctyonly');
+  lbl(37.0480,-107.4100,'Arboles','place sm ctyonly');
+  lbl(37.0480,-106.8450,'Chromo','place sm ctyonly');
+  lbl(37.2050,-107.3000,'Chimney Rock','place sm ctyonly');
+  lbl(37.0060,-107.1500,'COLORADO','feat ctyonly');
+  lbl(36.9940,-107.1500,'NEW MEXICO','feat ctyonly');
+  lbl(37.2683,-107.0060,'San Juan River','water townonly');
+  lbl(37.2620,-107.0165,'San Juan River','water townonly');
+  lbl(37.2400,-107.0040,'San Juan River','water areaonly');
+  lbl(37.1500,-107.0700,'San Juan River','water ctyonly');
+  lbl(37.3200,-107.3600,'Piedra River','water ctyonly');
+  lbl(37.2200,-106.8950,'Rio Blanco','water ctyonly');
+  lbl(37.0620,-106.8900,'Navajo River','water ctyonly');
+  lbl(37.2462,-107.1100,'US 160','hwy areaonly ctyonly');
+  lbl(37.2385,-106.9810,'US 84','hwy areaonly ctyonly');
+  lbl(37.1500,-107.3700,'CO 151','hwy ctyonly');
+  lbl(37.3850,-106.8750,'US 160','hwy ctyonly');
+  lbl(37.2691,-107.0030,'US 160','hwy townonly');
+  lbl(37.2626,-107.0092,'Hot Springs Blvd','feat townonly');
+  lbl(37.2600,-107.0160,'Downtown evacuation area','feat townonly');
+  lbl(37.2330,-107.3442,'Piedra bridge','feat ctyonly');
+
+
+  /* layer toggles */
+  var names={evac:'Evacuation areas',closures:'Road closures',infra:'Bridges',hazard:'Hazards',gauges:'USGS gauges (live)',shelter:'Shelters',civic:'Facilities',water:'Rivers',roads:'Highways',labels:'Labels'};
+  var box=document.getElementById('layers');
+  Object.keys(names).forEach(function(k){
+    var id='ly-'+k,w=document.createElement('label');w.className='layer';w.htmlFor=id;
+    w.innerHTML='<input type="checkbox" id="'+id+'" checked> '+names[k];box.appendChild(w);
+    w.querySelector('input').addEventListener('change',function(e){e.target.checked?map.addLayer(grp(k)):map.removeLayer(grp(k));});
+  });
+
+  var btn={town:document.getElementById('v-town'),area:document.getElementById('v-area'),county:document.getElementById('v-county')};
+  var bounds={town:B_TOWN,area:B_AREA,county:B_CTY};
+  Object.keys(btn).forEach(function(k){btn[k].onclick=function(){map.fitBounds(bounds[k],{padding:[10,10]});};});
+  var el=document.getElementById('map');
+  function zoomState(){var z=map.getZoom(),k=z>=14.5?'town':(z>=12?'area':'county');
+    el.classList.toggle('z-town',k=='town');el.classList.toggle('z-area',k=='area');el.classList.toggle('z-county',k=='county');
+    Object.keys(btn).forEach(function(b){btn[b].setAttribute('aria-pressed',String(b==k));});}
+  map.on('zoomend',zoomState);zoomState();
+  window.addEventListener('resize',function(){map.invalidateSize();});
+})();
+</script>
+</body>
+</html>
